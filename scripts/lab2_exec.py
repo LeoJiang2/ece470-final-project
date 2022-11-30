@@ -15,16 +15,22 @@ import rospkg
 import numpy as np
 import yaml
 import sys
+import cv2
+from cv_bridge import CvBridge, CvBridgeError
 from lab2_header import *
 from lab4_func import *
 from numpy import pi
+from blob_search import *
 
 # 20Hz
 SPIN_RATE = 20
 
 # UR3 home location
 home = np.radians([120, -90, 90, -90, -90, 0])
+xw_yw_R = []
+xw_yw_G = []
 
+yaw = 0
 # UR3 current position, using home position for initialization
 current_position = copy.deepcopy(home)
 
@@ -38,20 +44,22 @@ suction_off = False
 
 current_io_0 = False
 current_position_set = False
+image_shape_define = False
 
-Q = None
-p1 = lab_invk(295, 50, 35, 0)
-p2 = lab_invk(295, 50, 100, 0)
-p3 = lab_invk(295, 200, 200, 0)
+p1 = [295, 50, 35, 0]
+p2 = [295, 50, 100, 0]
+p3 = [295, 200, 200, 0]
 ############## Your Code Start Here ##############
 
 """
 TODO: define a ROS topic callback funtion for getting the state of suction cup
 Whenever ur3/gripper_input publishes info this callback function is called.
 """
-def gripper_input_callback(msg):
-    global digital_in_0 
+def input_callback(msg):
+
+    global digital_in_0
     digital_in_0 = msg.DIGIN
+    digital_in_0 = digital_in_0 & 1
 
 
 
@@ -171,18 +179,85 @@ def move_arm(pub_cmd, loop_rate, dest, vel, accel):
 
 ############## Your Code Start Here ##############
 
-def move_block(pub_cmd, loop_rate, start_loc, start_height, \
-               end_loc, end_height):
-    global Q
+def move_block(pub_cmd, loop_rate, start_xw_yw_zw, target_xw_yw_zw, vel, accel):
 
-    ### Hint: Use the Q array to map out your towers by location and "height".
+    """
+    start_xw_yw_zw: where to pick up a block in global coordinates
+    target_xw_yw_zw: where to place the block in global coordinates
 
+    hint: you will use lab_invk(), gripper(), move_arm() functions to
+    pick and place a block
+
+    """
+    # ========================= Student's code starts here =========================
+    
+    above_start_thetas = lab_invk(start_xw_yw_zw[0], start_xw_yw_zw[1], 60, 0)
+    start_thetas = lab_invk(start_xw_yw_zw[0], start_xw_yw_zw[1], 35, 0)
+    target_thetas = lab_invk(target_xw_yw_zw[0], target_xw_yw_zw[1], target_xw_yw_zw[2], 0)
+    above_target_thetas = lab_invk(target_xw_yw_zw[0], target_xw_yw_zw[1], target_xw_yw_zw[2]+20, 0)
+
+
+    time.sleep(1.0)
     error = 0
+    move_arm(pub_cmd, loop_rate, above_start_thetas, vel, accel)
+    print(1)
+    move_arm(pub_cmd, loop_rate, start_thetas, vel, accel)
+    print(2)
+    gripper(pub_cmd, loop_rate, suction_on)
+    print(3)
+    time.sleep(1.0)
+    if digital_in_0 == 0:
+        gripper(pub_cmd, loop_rate, suction_off)
+        print("Block is missing!")
+        return error
 
-
-
+    move_arm(pub_cmd, loop_rate, above_start_thetas, vel, accel)
+    move_arm(pub_cmd, loop_rate, above_target_thetas, vel, accel)
+    move_arm(pub_cmd, loop_rate, target_thetas, vel, accel)
+    gripper(pub_cmd, loop_rate, suction_off)
+    move_arm(pub_cmd, loop_rate, above_target_thetas, vel, accel)
     return error
 
+class ImageConverter:
+
+    def __init__(self, SPIN_RATE):
+
+        self.bridge = CvBridge()
+        self.image_pub = rospy.Publisher("/image_converter/output_video", Image, queue_size=10)
+        self.image_sub = rospy.Subscriber("/cv_camera_node/image_raw", Image, self.image_callback)
+        self.loop_rate = rospy.Rate(SPIN_RATE)
+
+        # Check if ROS is ready for operation
+        while(rospy.is_shutdown()):
+            print("ROS is shutdown!")
+
+
+    def image_callback(self, data):
+
+        global xw_yw_R # store found green blocks in this list
+
+        try:
+          # Convert ROS image to OpenCV image
+            raw_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+        except CvBridgeError as e:
+            print(e)
+
+        cv_image = cv2.flip(raw_image, -1)
+        cv2.line(cv_image, (0,50), (640,50), (0,0,0), 5)
+
+        # You will need to call blob_search() function to find centers of green blocks
+        # and yellow blocks, and store the centers in xw_yw_G & xw_yw_Y respectively.
+
+        # If no blocks are found for a particular color, you can return an empty list,
+        # to xw_yw_G or xw_yw_Y.
+
+        # Remember, xw_yw_G & xw_yw_Y are in global coordinates, which means you will
+        # do coordinate transformation in the blob_search() function, namely, from
+        # the image frame to the global world frame.
+
+        xw_yw_R = blob_search(cv_image, "red")
+        # xw_yw_G = blob_search(cv_image, "green")
+        # print(xw_yw_G)
 
 ############### Your Code End Here ###############
 
@@ -192,37 +267,13 @@ def main():
     global home
     global Q
     global SPIN_RATE
+    global xw_yw_R
+    global xw_yw_G
 
     # Parser
     parser = argparse.ArgumentParser(description='Please specify if using simulator or real robot')
     parser.add_argument('--simulator', type=str, default='True')
     args = parser.parse_args()
-
-    # Definition of our tower
-
-    # 2D layers (top view)
-
-    # Layer (Above blocks)
-    # | Q[0][2][1] Q[1][2][1] Q[2][2][1] |   Above third block
-    # | Q[0][1][1] Q[1][1][1] Q[2][1][1] |   Above point of second block
-    # | Q[0][0][1] Q[1][0][1] Q[2][0][1] |   Above point of bottom block
-
-    # Layer (Gripping blocks)
-    # | Q[0][2][0] Q[1][2][0] Q[2][2][0] |   Contact point of third block
-    # | Q[0][1][0] Q[1][1][0] Q[2][1][0] |   Contact point of second block
-    # | Q[0][0][0] Q[1][0][0] Q[2][0][0] |   Contact point of bottom block
-
-    # First index - From left to right position A, B, C
-    # Second index - From "bottom" to "top" position 1, 2, 3
-    # Third index - From gripper contact point to "in the air" point
-
-    # How the arm will move (Suggestions)
-    # 1. Go to the "above (start) block" position from its base position
-    # 2. Drop to the "contact (start) block" position
-    # 3. Rise back to the "above (start) block" position
-    # 4. Move to the destination "above (end) block" position
-    # 5. Drop to the corresponding "contact (end) block" position
-    # 6. Rise back to the "above (end) block" position
 
     # Initialize rospack
     rospack = rospkg.RosPack()
@@ -259,37 +310,7 @@ def main():
     ############## Your Code Start Here ##############
     # TODO: define a ROS subscriber for ur3/gripper_input message and corresponding callback function
 
-    sub_gripper = rospy.Subscriber('ur3/gripper_input', gripper_input, gripper_input_callback)
-
-
-
-    ############### Your Code End Here ###############
-
-
-    ############## Your Code Start Here ##############
-    # TODO: modify the code below so that program can get user input
-
-    input_done = 0
-    loop_count = 0
-
-    while(not input_done):
-        input_string = raw_input("Enter number of loops <Either 1 2 3 or 0 to quit> ")
-        print("You entered " + input_string + "\n")
-
-        if(int(input_string) == 1):
-            input_done = 1
-            loop_count = 1
-        elif (int(input_string) == 2):
-            input_done = 1
-            loop_count = 2
-        elif (int(input_string) == 3):
-            input_done = 1
-            loop_count = 3
-        elif (int(input_string) == 0):
-            print("Quitting... ")
-            sys.exit()
-        else:
-            print("Please just enter the character 1 2 3 or 0 to quit \n\n")
+    sub_gripper = rospy.Subscriber('ur3/gripper_input', gripper_input, input_callback)
 
 
 
@@ -305,24 +326,34 @@ def main():
 
     loop_rate = rospy.Rate(SPIN_RATE)
 
+    vel = 4.0
+    accel = 4.0
+    ic = ImageConverter(SPIN_RATE)
+    time.sleep(5)
+
     ############## Your Code Start Here ##############
     # TODO: modify the code so that UR3 can move tower accordingly from user input
 
-    while(loop_count > 0):
+    Rblock1 = xw_yw_R[0]
+    move_arm(pub_command, loop_rate, home, 4.0, 4.0)
+    move_block(pub_command, loop_rate,[Rblock1[0]*1000, Rblock1[1]*1000, 35], p2, vel, accel)
+    # move_block(pub_command, loop_rate,[Gblock1[0], Gblock1[1], 0], p2, vel, accel)
 
-        # move_arm(pub_command, loop_rate, home, 4.0, 4.0)
-        # rospy.loginfo("Sending goal 1 ...")
-        move_arm(pub_command, loop_rate, p1, 4.0, 4.0)
-        rospy.loginfo(digital_in_0)
-        gripper(pub_command, loop_rate, suction_on)
-        # Delay to make sure suction cup has grasped the block
-        time.sleep(1.0)
+    # while(loop_count > 0):
+
+    #     # move_arm(pub_command, loop_rate, home, 4.0, 4.0)
+    #     # rospy.loginfo("Sending goal 1 ...")
+    #     move_arm(pub_command, loop_rate, p1, 4.0, 4.0)
+    #     rospy.loginfo(digital_in_0)
+    #     gripper(pub_command, loop_rate, suction_on)
+    #     # Delay to make sure suction cup has grasped the block
+    #     time.sleep(1.0)
         
-        rospy.loginfo("Sending goal 2 ...")
-        move_arm(pub_command, loop_rate, p2, 4.0, 4.0)
-        move_arm(pub_command, loop_rate, p3, 4.0, 4.0)
-        rospy.loginfo(digital_in_0)
-        loop_count = loop_count - 1
+    #     rospy.loginfo("Sending goal 2 ...")
+    #     move_arm(pub_command, loop_rate, p2, 4.0, 4.0)
+    #     move_arm(pub_command, loop_rate, p3, 4.0, 4.0)
+    #     rospy.loginfo(digital_in_0)
+    #     loop_count = loop_count - 1
 
         
     # gripper(pub_command, loop_rate, suction_off)

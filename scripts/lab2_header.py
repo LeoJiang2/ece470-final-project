@@ -1,8 +1,18 @@
+import rospkg
+
+PI = 3.1415926535
+
+# messages for student to use
 from ur3_driver.msg import command
 from ur3_driver.msg import position
 from ur3_driver.msg import gripper_input
 
+from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from geometry_msgs.msg import Point
+from cv_bridge import CvBridge, CvBridgeError
 """
+
 command msg
 ------------------------
 float64[] destination

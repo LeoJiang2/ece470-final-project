@@ -1,11 +1,10 @@
-theta = 0#.0153
+import cv2
+import numpy as np
+
+theta = 0
 beta = 768.5
-tx = 0.288#0.207#.159
-ty = 0.1055#0.0851#.192
-# theta = -0.09
-# beta = 730.0
-# tx=-0.297435628054
-# ty=-0.0763807206584
+tx = 0.288
+ty = 0.1055
 
 #params for magic numbers
 Or = 240
@@ -60,25 +59,25 @@ def blob_search(image_raw, color):
     hsv_image = cv2.cvtColor(image_raw, cv2.COLOR_BGR2HSV)
 
     # ========================= Student's code starts here =========================
-    if color == "orange":
-        lower = (5,50,50)     # orange lower
-        upper = (15,255,255)   # orange upper
+    if color == "white":
+        lower = (0,0,240)     
+        upper = (255,15,255)  
 
     elif color == "purple":
-        lower = (125,50,50)   # purple
-        upper = (145, 255, 255) # purple
+        lower = (125,50,50)   
+        upper = (145, 255, 240) 
 
     elif color == "red":
-        lower = (0, 50, 50)
-        upper = (5, 255, 255)
+        lower = (0, 100, 20)
+        upper = (10, 255, 255)
 
     elif color == "green":
-        lower = (36, 50, 50)
-        upper = (86, 255, 255)
+        lower = (120, 50, 50)
+        upper = (180, 255, 255)
 
     elif color == "yellow":
         lower = (22, 50, 50)
-        upper = (45, 255, 255)
+        upper = (45, 255, 240)
 
     # Define a mask using the lower and upper bounds of the target color
     mask_image = cv2.inRange(hsv_image, lower, upper)
