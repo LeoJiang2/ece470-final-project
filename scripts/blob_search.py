@@ -60,8 +60,8 @@ def blob_search(image_raw, color):
 
     # ========================= Student's code starts here =========================
     if color == "white":
-        lower = (0,0,240)     
-        upper = (255,15,255)  
+        lower = (0,0,175)     
+        upper = (5,5,255)  
 
     elif color == "purple":
         lower = (125,50,50)   

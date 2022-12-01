@@ -28,7 +28,7 @@ SPIN_RATE = 20
 # UR3 home location
 home = np.radians([120, -90, 90, -90, -90, 0])
 xw_yw_R = []
-xw_yw_G = []
+xw_yw_W = []
 
 yaw = 0
 # UR3 current position, using home position for initialization
@@ -46,9 +46,9 @@ current_io_0 = False
 current_position_set = False
 image_shape_define = False
 
-p1 = [295, 50, 35, 0]
-p2 = [295, 50, 100, 0]
-p3 = [295, 200, 200, 0]
+
+p2 = [40, 480, 340, 0]
+p1 = [300, 480, 170, 0]
 ############## Your Code Start Here ##############
 
 """
@@ -191,20 +191,19 @@ def move_block(pub_cmd, loop_rate, start_xw_yw_zw, target_xw_yw_zw, vel, accel):
     """
     # ========================= Student's code starts here =========================
     
-    above_start_thetas = lab_invk(start_xw_yw_zw[0], start_xw_yw_zw[1], 60, 0)
-    start_thetas = lab_invk(start_xw_yw_zw[0], start_xw_yw_zw[1], 35, 0)
+    above_start_thetas = lab_invk(250, 100, 340, 0)
+    start_thetas = lab_invk(start_xw_yw_zw[0], start_xw_yw_zw[1], start_xw_yw_zw[2], 0)
     target_thetas = lab_invk(target_xw_yw_zw[0], target_xw_yw_zw[1], target_xw_yw_zw[2], 0)
-    above_target_thetas = lab_invk(target_xw_yw_zw[0], target_xw_yw_zw[1], target_xw_yw_zw[2]+20, 0)
+    above_target_thetas = lab_invk(target_xw_yw_zw[0], target_xw_yw_zw[1], target_xw_yw_zw[2]+10, 0)
 
 
     time.sleep(1.0)
     error = 0
-    move_arm(pub_cmd, loop_rate, above_start_thetas, vel, accel)
-    print(1)
+    # move_arm(pub_cmd, loop_rate, above_start_thetas, vel, accel)
+    print(start_xw_yw_zw)
+
     move_arm(pub_cmd, loop_rate, start_thetas, vel, accel)
-    print(2)
     gripper(pub_cmd, loop_rate, suction_on)
-    print(3)
     time.sleep(1.0)
     if digital_in_0 == 0:
         gripper(pub_cmd, loop_rate, suction_off)
@@ -212,10 +211,10 @@ def move_block(pub_cmd, loop_rate, start_xw_yw_zw, target_xw_yw_zw, vel, accel):
         return error
 
     move_arm(pub_cmd, loop_rate, above_start_thetas, vel, accel)
-    move_arm(pub_cmd, loop_rate, above_target_thetas, vel, accel)
+
     move_arm(pub_cmd, loop_rate, target_thetas, vel, accel)
     gripper(pub_cmd, loop_rate, suction_off)
-    move_arm(pub_cmd, loop_rate, above_target_thetas, vel, accel)
+
     return error
 
 class ImageConverter:
@@ -234,7 +233,8 @@ class ImageConverter:
 
     def image_callback(self, data):
 
-        global xw_yw_R # store found green blocks in this list
+        global xw_yw_R
+        global xw_yw_W # store found green blocks in this list
 
         try:
           # Convert ROS image to OpenCV image
@@ -256,6 +256,7 @@ class ImageConverter:
         # the image frame to the global world frame.
 
         xw_yw_R = blob_search(cv_image, "red")
+        xw_yw_W = blob_search(cv_image, "white")
         # xw_yw_G = blob_search(cv_image, "green")
         # print(xw_yw_G)
 
@@ -334,29 +335,18 @@ def main():
     ############## Your Code Start Here ##############
     # TODO: modify the code so that UR3 can move tower accordingly from user input
 
-    Rblock1 = xw_yw_R[0]
+    # print(lab_invk(p1[0],p1[1],p1[3],0))
     move_arm(pub_command, loop_rate, home, 4.0, 4.0)
-    move_block(pub_command, loop_rate,[Rblock1[0]*1000, Rblock1[1]*1000, 35], p2, vel, accel)
-    # move_block(pub_command, loop_rate,[Gblock1[0], Gblock1[1], 0], p2, vel, accel)
-
-    # while(loop_count > 0):
-
-    #     # move_arm(pub_command, loop_rate, home, 4.0, 4.0)
-    #     # rospy.loginfo("Sending goal 1 ...")
-    #     move_arm(pub_command, loop_rate, p1, 4.0, 4.0)
-    #     rospy.loginfo(digital_in_0)
-    #     gripper(pub_command, loop_rate, suction_on)
-    #     # Delay to make sure suction cup has grasped the block
-    #     time.sleep(1.0)
-        
-    #     rospy.loginfo("Sending goal 2 ...")
-    #     move_arm(pub_command, loop_rate, p2, 4.0, 4.0)
-    #     move_arm(pub_command, loop_rate, p3, 4.0, 4.0)
-    #     rospy.loginfo(digital_in_0)
-    #     loop_count = loop_count - 1
-
-        
-    # gripper(pub_command, loop_rate, suction_off)
+    Rblock1 = copy.copy(xw_yw_R[0])
+    Rblockx = Rblock1[0]*1000-100
+    Rblocky = Rblock1[1]*1000+250
+    Wblock1 = copy.copy(xw_yw_W[0])
+    Wblockx = Wblock1[0]*1000-100
+    Wblocky = Wblock1[1]*1000+250
+    move_block(pub_command, loop_rate,[Rblockx, Rblocky, 30], p2, vel, accel)
+    move_arm(pub_command, loop_rate, lab_invk(250, 100, 340, 0), vel, accel)
+    move_block(pub_command, loop_rate,[Wblockx, Wblocky, 30], p2, vel, accel)
+    # move_block(pub_command, loop_rate,[Wblockx, Wblocky, 30], p2, vel, accel)
 
 
 
