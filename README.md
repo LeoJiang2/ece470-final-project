@@ -15,5 +15,5 @@ $ source devel/setup.bash
 $ rosrun lab2pkg_py lab2_spawn.py
 $ rosrun lab2pkg_py lab2_exec.py
 
-#### Drivers
-## Drivers and launch files are located in the master branch
+## Drivers
+#### Drivers and launch files are located in the master branch
